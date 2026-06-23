@@ -2,11 +2,11 @@ name: CI/CD Tienda Perritos EKS
 
 on:
   push:
-    branches: [ deploy ] # Cambiado a deploy por rúbrica de evaluación
+    branches: [ deploy ] # NOTA: Si tu rúbrica exige la rama "deploy", cámbialo aquí
   workflow_dispatch: {}
 
 env:
-  # Repos de ECR configurados con tus nombres reales en AWS
+  # Nombres exactos de tus repositorios en la consola AWS ECR
   ECR_REPO_FRONTEND: innovatech-frontend
   ECR_REPO_BACKEND: innovatech-backend
   ECR_REPO_DB: innovatech-db
@@ -34,40 +34,40 @@ jobs:
       - name: Definir tag de imagen
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      # ---------- COMPILACIÓN Y SUBIDA CON DOBLE TAG ----------
+      # ---------- FRONTEND ----------
       - name: Build & push FRONTEND
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd frontend
-          docker build -t $ECR_REGISTRY/${ECR_REPO_FRONTEND}:${IMAGE_TAG} -t $ECR_REGISTRY/${ECR_REPO_FRONTEND}:latest .
+          docker build -t $ECR_REGISTRY/${ECR_REPO_FRONTEND}:${IMAGE_TAG} .
           docker push $ECR_REGISTRY/${ECR_REPO_FRONTEND}:${IMAGE_TAG}
-          docker push $ECR_REGISTRY/${ECR_REPO_FRONTEND}:latest
 
+      # ---------- BACKEND ----------
       - name: Build & push BACKEND
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd backend
-          docker build -t $ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG} -t $ECR_REGISTRY/${ECR_REPO_BACKEND}:latest .
+          docker build -t $ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG} .
           docker push $ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG}
-          docker push $ECR_REGISTRY/${ECR_REPO_BACKEND}:latest
 
+      # ---------- DB ----------
       - name: Build & push DB
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd db
-          docker build -t $ECR_REGISTRY/${ECR_REPO_DB}:${IMAGE_TAG} -t $ECR_REGISTRY/${ECR_REPO_DB}:latest .
+          docker build -t $ECR_REGISTRY/${ECR_REPO_DB}:${IMAGE_TAG} .
           docker push $ECR_REGISTRY/${ECR_REPO_DB}:${IMAGE_TAG}
-          docker push $ECR_REGISTRY/${ECR_REPO_DB}:latest
 
-      # ---------- CONFIGURACIÓN DE KUBERNETES ----------
+      # ---------- Instalar kubectl ----------
       - name: Instalar kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: v1.29.0
 
+      # ---------- Configurar kubeconfig de EKS ----------
       - name: Configurar kubeconfig para EKS
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -78,7 +78,7 @@ jobs:
             --name $EKS_CLUSTER_NAME
           kubectl config current-context
 
-      # ---------- APLICAR MANIFIESTOS Y CORREGIR DESPLIEGUE EN CALIENTE ----------
+      # ---------- Aplicar manifests base ----------
       - name: Aplicar manifests base (namespace, DB, servicios)
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -89,12 +89,13 @@ jobs:
           kubectl apply -f k8s/mysql-deployment.yaml -n $EKS_NAMESPACE
           kubectl apply -f k8s/mysql-service.yaml -n $EKS_NAMESPACE
           
-          # 🟢 FIX COMPLETO PARA LA DB: Forzar la actualización al Tag dinámico de tu sesión
+          # 🟢 FIX PARA LA DB: Forzar a Kubernetes a usar el mismo tag dinámico de Git
           kubectl set image deployment/tienda-db \
             mysql=$ECR_REGISTRY/${ECR_REPO_DB}:${IMAGE_TAG} \
             -n $EKS_NAMESPACE
           kubectl rollout status deployment/tienda-db -n $EKS_NAMESPACE
 
+      # ---------- Actualizar BACKEND en EKS ----------
       - name: Actualizar BACKEND en EKS
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -108,6 +109,7 @@ jobs:
             -n $EKS_NAMESPACE
           kubectl rollout status deployment/tienda-backend -n $EKS_NAMESPACE
 
+      # ---------- Actualizar FRONTEND en EKS ----------
       - name: Actualizar FRONTEND en EKS
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -121,6 +123,7 @@ jobs:
             -n $EKS_NAMESPACE
           kubectl rollout status deployment/tienda-frontend -n $EKS_NAMESPACE
 
+      # ---------- HPA (si existen los YAML) ----------
       - name: Aplicar HPA (opcional)
         env:
           EKS_NAMESPACE: ${{ secrets.EKS_NAMESPACE }}
@@ -128,7 +131,8 @@ jobs:
           if [ -f k8s/backend-hpa.yaml ]; then kubectl apply -f k8s/backend-hpa.yaml -n $EKS_NAMESPACE; fi
           if [ -f k8s/frontend-hpa.yaml ]; then kubectl apply -f k8s/frontend-hpa.yaml -n $EKS_NAMESPACE; fi
 
-      - name: Ver estado final
+      # ---------- Ver estado final ----------
+      - name: Ver pods y servicios
         env:
           EKS_NAMESPACE: ${{ secrets.EKS_NAMESPACE }}
         run: |
