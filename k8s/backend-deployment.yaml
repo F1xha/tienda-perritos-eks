@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-backend # Colocar uri de tu imagen en ECR
+          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-backend:latest # Colocar uri de tu imagen en ECR
           ports:
             - containerPort: 3001
           env:
