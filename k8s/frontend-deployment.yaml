@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-frontend:latest # Colocar uri de tu imagen en ECR
+          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-frontend:eks-v1 # Colocar uri de tu imagen en ECR
           ports:
             - containerPort: 80
 

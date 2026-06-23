@@ -2,11 +2,11 @@ name: CI/CD Tienda Perritos EKS
 
 on:
   push:
-    branches: [ deploy ] # NOTA: Si tu rúbrica exige la rama "deploy", cámbialo aquí
+    branches: [ main ]
   workflow_dispatch: {}
 
 env:
-  # Nombres exactos de tus repositorios en la consola AWS ECR
+  # Repos de ECR (no son secretos, solo nombres)
   ECR_REPO_FRONTEND: innovatech-frontend
   ECR_REPO_BACKEND: innovatech-backend
   ECR_REPO_DB: innovatech-db
@@ -52,7 +52,7 @@ jobs:
           docker build -t $ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG} .
           docker push $ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG}
 
-      # ---------- DB ----------
+      # ---------- DB (opcional) ----------
       - name: Build & push DB
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -81,19 +81,12 @@ jobs:
       # ---------- Aplicar manifests base ----------
       - name: Aplicar manifests base (namespace, DB, servicios)
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           EKS_NAMESPACE: ${{ secrets.EKS_NAMESPACE }}
         run: |
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/mysql-secret.yaml -n $EKS_NAMESPACE
           kubectl apply -f k8s/mysql-deployment.yaml -n $EKS_NAMESPACE
           kubectl apply -f k8s/mysql-service.yaml -n $EKS_NAMESPACE
-          
-          # 🟢 FIX PARA LA DB: Forzar a Kubernetes a usar el mismo tag dinámico de Git
-          kubectl set image deployment/tienda-db \
-            mysql=$ECR_REGISTRY/${ECR_REPO_DB}:${IMAGE_TAG} \
-            -n $EKS_NAMESPACE
-          kubectl rollout status deployment/tienda-db -n $EKS_NAMESPACE
 
       # ---------- Actualizar BACKEND en EKS ----------
       - name: Actualizar BACKEND en EKS
@@ -103,7 +96,6 @@ jobs:
         run: |
           kubectl apply -f k8s/backend-deployment.yaml -n $EKS_NAMESPACE
           kubectl apply -f k8s/backend-service.yaml -n $EKS_NAMESPACE
-          
           kubectl set image deployment/tienda-backend \
             backend=$ECR_REGISTRY/${ECR_REPO_BACKEND}:${IMAGE_TAG} \
             -n $EKS_NAMESPACE
@@ -117,7 +109,6 @@ jobs:
         run: |
           kubectl apply -f k8s/frontend-deployment.yaml -n $EKS_NAMESPACE
           kubectl apply -f k8s/frontend-service.yaml -n $EKS_NAMESPACE
-          
           kubectl set image deployment/tienda-frontend \
             frontend=$ECR_REGISTRY/${ECR_REPO_FRONTEND}:${IMAGE_TAG} \
             -n $EKS_NAMESPACE

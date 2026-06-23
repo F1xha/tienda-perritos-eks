@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-db:latest # Colocar uri de tu imagen en ECR
+          image: 548464633316.dkr.ecr.us-east-1.amazonaws.com/innovatech-db:eks-v1 # Colocar uri de tu imagen en ECR
           ports:
             - containerPort: 3306
           env:
